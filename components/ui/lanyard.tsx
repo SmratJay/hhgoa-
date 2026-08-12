@@ -153,6 +153,8 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
             }
         };
     }, [cardTextureUrl]);
+    const [isFlipped, setIsFlipped] = useState(false);
+    const pointerDownTime = useRef(0);
     const [curve] = useState(
         () =>
             new THREE.CatmullRomCurve3([new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()])
@@ -203,9 +205,28 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
             curve.points[2].copy(j1.current.lerped);
             curve.points[3].copy(fixed.current.translation());
             band.current.geometry.setPoints(curve.getPoints(isMobile ? 16 : 32));
+            
             ang.copy(card.current.angvel());
-            rot.copy(card.current.rotation());
-            card.current.setAngvel({x: ang.x, y: ang.y - rot.y * 0.25, z: ang.z});
+            
+            // Get current rotation quaternion from Rapier
+            const curRot = card.current.rotation();
+            const q = new THREE.Quaternion(curRot.x, curRot.y, curRot.z, curRot.w);
+            const euler = new THREE.Euler().setFromQuaternion(q, 'YXZ');
+            
+            // Set target rotation (0 if front, PI/180deg if flipped)
+            const targetRotY = isFlipped ? Math.PI : 0;
+            let diffY = euler.y - targetRotY;
+            
+            // Wrap to shortest path (-PI to PI)
+            while (diffY < -Math.PI) diffY += Math.PI * 2;
+            while (diffY > Math.PI) diffY -= Math.PI * 2;
+            
+            // Apply correction torque to snap to targets
+            card.current.setAngvel({
+                x: ang.x, 
+                y: ang.y - diffY * 2.5, 
+                z: ang.z
+            });
         }
     });
 
@@ -240,10 +261,15 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
                         onPointerUp={(e: any) => {
                             e.target.releasePointerCapture(e.pointerId);
                             drag(false);
+                            const clickDuration = Date.now() - pointerDownTime.current;
+                            if (clickDuration < 250) {
+                                setIsFlipped(f => !f);
+                            }
                         }}
                         onPointerDown={(e: any) => {
                             e.target.setPointerCapture(e.pointerId);
                             drag(new THREE.Vector3().copy(e.point).sub(vec.copy(card.current.translation())));
+                            pointerDownTime.current = Date.now();
                         }}
                     >
                         <mesh geometry={nodes.card.geometry}>

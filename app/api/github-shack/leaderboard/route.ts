@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getLeaderboard } from "@/lib/shack-leaderboard";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const leaderboard = await getLeaderboard(10);
 

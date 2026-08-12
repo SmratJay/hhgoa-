@@ -47,28 +47,41 @@ export function isLeaderboardEnabled() {
 }
 
 export async function upsertLeaderboardEntry(entry: ShackEntry) {
-  if (!hasSupabaseConfig()) return { enabled: false };
-
-  const response = await fetch(getSupabaseTableUrl("?on_conflict=username"), {
-    method: "POST",
-    headers: getSupabaseHeaders(),
-    body: JSON.stringify({
-      username: entry.username.toLowerCase(),
-      display_username: entry.username,
-      avatar_url: entry.avatarUrl ?? null,
-      contributions: entry.contributions,
-      commits: entry.commits,
-      pints: entry.pints,
-      tier: entry.tier,
-      checked_at: new Date().toISOString(),
-    }),
-  });
-
-  if (!response.ok) {
-    return { enabled: true, error: "supabase_write_failed" };
+  if (!hasSupabaseConfig()) {
+    console.warn("Supabase config is missing. Skipping leaderboard write.");
+    return { enabled: false };
   }
 
-  return { enabled: true };
+  try {
+    const response = await fetch(getSupabaseTableUrl("?on_conflict=username"), {
+      method: "POST",
+      headers: {
+        ...getSupabaseHeaders(),
+        Prefer: "resolution=merge-duplicates,return=representation",
+      },
+      body: JSON.stringify({
+        username: entry.username.toLowerCase(),
+        display_username: entry.username,
+        avatar_url: entry.avatarUrl ?? null,
+        contributions: entry.contributions,
+        commits: entry.commits,
+        pints: entry.pints,
+        tier: entry.tier,
+        checked_at: new Date().toISOString(),
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`Supabase write failed (Status ${response.status}):`, errText);
+      return { enabled: true, error: "supabase_write_failed", detail: errText };
+    }
+
+    return { enabled: true };
+  } catch (err) {
+    console.error("Network error writing to Supabase:", err);
+    return { enabled: true, error: "supabase_write_failed", detail: String(err) };
+  }
 }
 
 export async function getLeaderboard(limit = 10) {
@@ -76,27 +89,34 @@ export async function getLeaderboard(limit = 10) {
     return { enabled: false, entries: [] as ShackEntry[] };
   }
 
-  const search = `?select=username,display_username,avatar_url,contributions,commits,pints,tier,checked_at&order=contributions.desc&limit=${limit}`;
-  const response = await fetch(getSupabaseTableUrl(search), {
-    headers: getSupabaseHeaders(),
-    next: { revalidate: 60 },
-  });
+  try {
+    const search = `?select=username,display_username,avatar_url,contributions,commits,pints,tier,checked_at&order=contributions.desc&limit=${limit}`;
+    const response = await fetch(getSupabaseTableUrl(search), {
+      headers: getSupabaseHeaders(),
+      cache: "no-store",
+    });
 
-  if (!response.ok) {
-    return { enabled: true, entries: [] as ShackEntry[], error: "supabase_read_failed" };
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`Supabase read failed (Status ${response.status}):`, errText);
+      return { enabled: true, entries: [] as ShackEntry[], error: "supabase_read_failed", detail: errText };
+    }
+
+    const rows = (await response.json()) as Record<string, unknown>[];
+    const entries = rows.map((row, index) =>
+      normalizeLeaderboardEntry(
+        {
+          ...row,
+          username: row.display_username ?? row.username,
+        },
+        index
+      )
+    );
+
+    return { enabled: true, entries };
+  } catch (err) {
+    console.error("Network error reading from Supabase:", err);
+    return { enabled: true, entries: [] as ShackEntry[], error: "supabase_read_failed", detail: String(err) };
   }
-
-  const rows = (await response.json()) as Record<string, unknown>[];
-  const entries = rows.map((row, index) =>
-    normalizeLeaderboardEntry(
-      {
-        ...row,
-        username: row.display_username ?? row.username,
-      },
-      index
-    )
-  );
-
-  return { enabled: true, entries };
 }
 

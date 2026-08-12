@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="90" viewBox="0 0 900 90">
+  <rect width="900" height="90" fill="#075b39"/>
+  <path d="M0 10H900M0 80H900" stroke="#f8db19" stroke-width="6"/>
+  <path d="M0 18H900M0 72H900" stroke="#ff1680" stroke-width="3" stroke-dasharray="10 12"/>
+  <g fill="#f8db19" font-family="Arial Narrow,Arial,sans-serif" font-weight="900" font-size="30" letter-spacing="8">
+    <text x="42" y="56">HHG</text><text x="252" y="56">HHG</text><text x="462" y="56">HHG</text><text x="672" y="56">HHG</text>
+  </g>
+</svg>

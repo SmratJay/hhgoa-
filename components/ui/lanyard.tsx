@@ -107,7 +107,6 @@ interface BandProps {
 }
 
 function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: BandProps) {
-    // Using "any" for refs since the exact types depend on Rapier's internals
     const band = useRef<any>(null);
     const fixed = useRef<any>(null);
     const j1 = useRef<any>(null);
@@ -117,7 +116,6 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
 
     const vec = new THREE.Vector3();
     const ang = new THREE.Vector3();
-    const rot = new THREE.Vector3();
     const dir = new THREE.Vector3();
 
     const segmentProps: any = {
@@ -130,34 +128,43 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
 
     const {nodes, materials} = useGLTF(cardGLB) as any;
     const texture = useTexture(typeof lanyard === 'string' ? lanyard : lanyard.src) as THREE.Texture;
-    
-    // Load custom card texture if provided - use state to handle async loading
+
     const [customCardTexture, setCustomCardTexture] = useState<THREE.Texture | null>(null);
-    
     useEffect(() => {
-        if (!cardTextureUrl) {
-            setCustomCardTexture(null);
-            return;
-        }
-        
+        if (!cardTextureUrl) { setCustomCardTexture(null); return; }
         const loader = new THREE.TextureLoader();
-        loader.load(cardTextureUrl, (loadedTexture) => {
-            loadedTexture.flipY = false;
-            loadedTexture.colorSpace = THREE.SRGBColorSpace;
-            setCustomCardTexture(loadedTexture);
+        loader.load(cardTextureUrl, (t) => {
+            t.flipY = false;
+            t.colorSpace = THREE.SRGBColorSpace;
+            setCustomCardTexture(t);
         });
-        
-        return () => {
-            if (customCardTexture) {
-                customCardTexture.dispose();
-            }
-        };
+        return () => { customCardTexture?.dispose(); };
     }, [cardTextureUrl]);
-    const [isFlipped, setIsFlipped] = useState(false);
-    const pointerDownTime = useRef(0);
+
+    // ── Flip state ─────────────────────────────────────────────────────────
+    // We mirror the boolean in a ref so useFrame (a stale closure) always
+    // reads the current value without triggering re-renders.
+    const isFlippedRef = useRef(false);
+    const [isFlipped, setIsFlippedState] = useState(false);
+    const toggleFlip = () => {
+        const next = !isFlippedRef.current;
+        isFlippedRef.current = next;
+        setIsFlippedState(next);
+    };
+
+    // ── Drag vs tap detection ──────────────────────────────────────────────
+    // We only activate physics-drag when the pointer moves > 4px from the
+    // initial down position. A quick tap (no movement) skips drag entirely
+    // so the card stays dynamic and the torque impulse can act on it.
+    const pointerDownScreenXY = useRef<{ x: number; y: number } | null>(null);
+    const isDragging = useRef(false);
+    const pendingDragVec = useRef<THREE.Vector3 | null>(null);
+
     const [curve] = useState(
-        () =>
-            new THREE.CatmullRomCurve3([new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()])
+        () => new THREE.CatmullRomCurve3([
+            new THREE.Vector3(), new THREE.Vector3(),
+            new THREE.Vector3(), new THREE.Vector3()
+        ])
     );
     const [dragged, drag] = useState<false | THREE.Vector3>(false);
     const [hovered, hover] = useState(false);
@@ -165,67 +172,65 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
     useRopeJoint(fixed, j1, [[0, 0, 0], [0, 0, 0], 1]);
     useRopeJoint(j1, j2, [[0, 0, 0], [0, 0, 0], 1]);
     useRopeJoint(j2, j3, [[0, 0, 0], [0, 0, 0], 1]);
-    useSphericalJoint(j3, card, [
-        [0, 0, 0],
-        [0, 1.45, 0]
-    ]);
+    useSphericalJoint(j3, card, [[0, 0, 0], [0, 1.45, 0]]);
 
     useEffect(() => {
         if (hovered) {
             document.body.style.cursor = dragged ? 'grabbing' : 'grab';
-            return () => {
-                document.body.style.cursor = 'auto';
-            };
+            return () => { document.body.style.cursor = 'auto'; };
         }
     }, [hovered, dragged]);
 
     useFrame((state, delta) => {
+        // ── Drag translation ───────────────────────────────────────────────
         if (dragged && typeof dragged !== 'boolean') {
             vec.set(state.pointer.x, state.pointer.y, 0.5).unproject(state.camera);
             dir.copy(vec).sub(state.camera.position).normalize();
             vec.add(dir.multiplyScalar(state.camera.position.length()));
-            [card, j1, j2, j3, fixed].forEach(ref => ref.current?.wakeUp());
+            [card, j1, j2, j3, fixed].forEach(r => r.current?.wakeUp());
             card.current?.setNextKinematicTranslation({
                 x: vec.x - dragged.x,
                 y: vec.y - dragged.y,
                 z: vec.z - dragged.z
             });
         }
-        if (fixed.current) {
-            [j1, j2].forEach(ref => {
-                if (!ref.current.lerped) ref.current.lerped = new THREE.Vector3().copy(ref.current.translation());
-                const clampedDistance = Math.max(0.1, Math.min(1, ref.current.lerped.distanceTo(ref.current.translation())));
-                ref.current.lerped.lerp(
-                    ref.current.translation(),
-                    delta * (minSpeed + clampedDistance * (maxSpeed - minSpeed))
-                );
-            });
-            curve.points[0].copy(j3.current.translation());
-            curve.points[1].copy(j2.current.lerped);
-            curve.points[2].copy(j1.current.lerped);
-            curve.points[3].copy(fixed.current.translation());
-            band.current.geometry.setPoints(curve.getPoints(isMobile ? 16 : 32));
-            
+
+        if (!fixed.current) return;
+
+        // ── Rope simulation ────────────────────────────────────────────────
+        [j1, j2].forEach(ref => {
+            if (!ref.current.lerped)
+                ref.current.lerped = new THREE.Vector3().copy(ref.current.translation());
+            const d = Math.max(0.1, Math.min(1, ref.current.lerped.distanceTo(ref.current.translation())));
+            ref.current.lerped.lerp(ref.current.translation(), delta * (minSpeed + d * (maxSpeed - minSpeed)));
+        });
+        curve.points[0].copy(j3.current.translation());
+        curve.points[1].copy(j2.current.lerped);
+        curve.points[2].copy(j1.current.lerped);
+        curve.points[3].copy(fixed.current.translation());
+        band.current.geometry.setPoints(curve.getPoints(isMobile ? 16 : 32));
+
+        // ── Flip steering torque (only when NOT being dragged) ─────────────
+        if (!dragged) {
             ang.copy(card.current.angvel());
-            
-            // Get current rotation quaternion from Rapier
+
+            // Read current Y rotation via Quaternion → Euler
             const curRot = card.current.rotation();
             const q = new THREE.Quaternion(curRot.x, curRot.y, curRot.z, curRot.w);
             const euler = new THREE.Euler().setFromQuaternion(q, 'YXZ');
-            
-            // Set target rotation (0 if front, PI/180deg if flipped)
-            const targetRotY = isFlipped ? Math.PI : 0;
+
+            const targetRotY = isFlippedRef.current ? Math.PI : 0;
             let diffY = euler.y - targetRotY;
-            
-            // Wrap to shortest path (-PI to PI)
+
+            // Wrap to shortest path
             while (diffY < -Math.PI) diffY += Math.PI * 2;
-            while (diffY > Math.PI) diffY -= Math.PI * 2;
-            
-            // Apply correction torque to snap to targets
+            while (diffY > Math.PI)  diffY -= Math.PI * 2;
+
+            // Strong proportional correction + damp existing angular velocity
             card.current.setAngvel({
-                x: ang.x, 
-                y: ang.y - diffY * 2.5, 
-                z: ang.z
+                x: ang.x * 0.9,
+                y: ang.y - diffY * 6,
+                z: ang.z * 0.9,
             });
         }
     });
@@ -258,18 +263,49 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
                         position={[0, -1.2, -0.05]}
                         onPointerOver={() => hover(true)}
                         onPointerOut={() => hover(false)}
-                        onPointerUp={(e: any) => {
-                            e.target.releasePointerCapture(e.pointerId);
-                            drag(false);
-                            const clickDuration = Date.now() - pointerDownTime.current;
-                            if (clickDuration < 250) {
-                                setIsFlipped(f => !f);
-                            }
-                        }}
                         onPointerDown={(e: any) => {
                             e.target.setPointerCapture(e.pointerId);
-                            drag(new THREE.Vector3().copy(e.point).sub(vec.copy(card.current.translation())));
-                            pointerDownTime.current = Date.now();
+                            // Record screen-space position for tap vs drag detection
+                            pointerDownScreenXY.current = { x: e.clientX, y: e.clientY };
+                            isDragging.current = false;
+                            // Pre-calculate the drag offset but don't commit it yet
+                            pendingDragVec.current = new THREE.Vector3()
+                                .copy(e.point)
+                                .sub(vec.copy(card.current.translation()));
+                        }}
+                        onPointerMove={(e: any) => {
+                            if (!pointerDownScreenXY.current) return;
+                            const dx = e.clientX - pointerDownScreenXY.current.x;
+                            const dy = e.clientY - pointerDownScreenXY.current.y;
+                            const dist = Math.sqrt(dx * dx + dy * dy);
+                            // Only activate drag once the pointer has moved > 4px
+                            if (!isDragging.current && dist > 4 && pendingDragVec.current) {
+                                isDragging.current = true;
+                                drag(pendingDragVec.current);
+                            }
+                        }}
+                        onPointerUp={(e: any) => {
+                            e.target.releasePointerCapture(e.pointerId);
+                            if (isDragging.current) {
+                                // End drag normally
+                                drag(false);
+                            } else {
+                                // It was a tap — card is still dynamic, apply torque impulse
+                                const next = !isFlippedRef.current;
+                                isFlippedRef.current = next;
+                                setIsFlippedState(next);
+                                // Give it an immediate angular kick so it doesn't wait for useFrame
+                                if (card.current) {
+                                    card.current.wakeUp();
+                                    card.current.applyTorqueImpulse(
+                                        { x: 0, y: next ? 5 : -5, z: 0 },
+                                        true
+                                    );
+                                }
+                            }
+                            pointerDownScreenXY.current = null;
+                            isDragging.current = false;
+                            pendingDragVec.current = null;
                         }}
                     >
                         <mesh geometry={nodes.card.geometry}>
@@ -306,3 +342,4 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
         </>
     );
 }
+

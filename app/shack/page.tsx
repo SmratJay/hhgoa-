@@ -5,6 +5,7 @@ import { Github, Search, Loader2, Beer, Trophy, ArrowLeft } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { type ShackEntry } from "@/lib/github-shack";
+import { TarotCard } from "@/components/shack/TarotCard";
 
 /* ─── Shack Visual ─────────────────────────────────────────────── */
 function ShackVisual({ entry }: { entry: ShackEntry }) {
@@ -236,9 +237,14 @@ export default function ShackPage() {
 
         {/* Result */}
         {entry && (
-          <div className="space-y-6 mb-20 animate-in fade-in slide-in-from-bottom-6 duration-500">
-            <ShackVisual entry={entry} />
-            <UserCard entry={entry} />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-20 animate-in fade-in slide-in-from-bottom-6 duration-500 items-start">
+            <div className="lg:col-span-2 space-y-6">
+              <ShackVisual entry={entry} />
+              <UserCard entry={entry} />
+            </div>
+            <div className="flex justify-center w-full">
+              <TarotCard commits={entry.commits} />
+            </div>
           </div>
         )}
 

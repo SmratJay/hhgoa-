@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <circle cx="100" cy="100" r="85" fill="#ffffff" stroke="#078C4A" stroke-width="8"/>
+  <circle cx="100" cy="100" r="76" fill="#078C4A"/>
+  <path d="M100 35 L125 80 L105 80 L105 125 L95 125 L95 80 L75 80 Z" fill="#f8db19"/>
+  <text x="100" y="160" fill="#f8db19" font-family="Arial Black, sans-serif" font-weight="900" font-size="24" text-anchor="middle">SHIP IT 🚀</text>
+</svg>

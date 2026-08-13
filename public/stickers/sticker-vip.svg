@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <polygon points="100,15 125,70 185,75 140,115 155,175 100,145 45,175 60,115 15,75 75,70" fill="#f8db19" stroke="#045c30" stroke-width="6"/>
+  <text x="100" y="115" fill="#045c30" font-family="Arial Black, sans-serif" font-weight="900" font-size="28" text-anchor="middle">HHG</text>
+</svg>

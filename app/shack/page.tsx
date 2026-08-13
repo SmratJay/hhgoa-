@@ -6,28 +6,53 @@ import Image from "next/image";
 import Link from "next/link";
 import { type ShackEntry } from "@/lib/github-shack";
 import { TarotCard } from "@/components/shack/TarotCard";
+import { BeachParticles } from "@/components/shack/BeachParticles";
+import { MusicPlayer } from "@/components/shack/MusicPlayer";
 
 /* ─── Shack Visual ─────────────────────────────────────────────── */
-function ShackVisual({ entry }: { entry: ShackEntry }) {
+function ShackVisual({ entry }: { entry: ShackEntry | null }) {
+  const [imgSrc, setImgSrc] = useState("/images-hut/baseimage.png");
+  const [fading, setFading] = useState(false);
+
+  useEffect(() => {
+    if (!entry) {
+      setImgSrc("/images-hut/baseimage.png");
+      return;
+    }
+    // Cross-fade: fade out then swap src, then fade back in
+    setFading(true);
+    const t = setTimeout(() => {
+      setImgSrc(entry.tierAsset);
+      setFading(false);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [entry]);
+
   return (
     <div className="relative w-full max-w-3xl mx-auto overflow-hidden rounded-sm shadow-[8px_8px_0_#f8db19] border-2 border-[#f8db19] group">
       <div className="aspect-[16/9] relative w-full bg-[#043c27]">
         <Image
-          src={entry.tierAsset}
-          alt={`Tier ${entry.tier} Goa Shack`}
+          src={imgSrc}
+          alt={entry ? `Tier ${entry.tier} Goa Shack` : "Base Goa Shack"}
           fill
-          className="object-cover transition-transform duration-700 ease-in-out group-hover:scale-105"
+          className="object-cover transition-all duration-700 ease-in-out group-hover:scale-105"
+          style={{ opacity: fading ? 0 : 1, transition: "opacity 0.35s ease, transform 0.7s ease" }}
           priority
         />
         <div className="absolute inset-0 bg-gradient-to-t from-[#043c27]/90 via-transparent to-transparent pointer-events-none" />
-        <div className="absolute bottom-4 left-5 right-5 flex items-end justify-between z-10">
-          <div>
-            <span className="text-[#ff1680] font-mono text-xs font-bold uppercase tracking-[.2em]">TIER {entry.tier}</span>
-            <h2 className="text-3xl md:text-5xl font-bold text-[#fff9df] mt-1" style={{ fontFamily: "Georgia, serif", letterSpacing: "-.04em" }}>
-              {entry.tierLabel}
-            </h2>
+        {entry && (
+          <div className="absolute bottom-4 left-5 right-5 flex items-end justify-between z-10">
+            <div>
+              <span className="text-[#ff1680] font-mono text-xs font-bold uppercase tracking-[.2em]">TIER {entry.tier}</span>
+              <h2
+                className="text-3xl md:text-5xl font-bold text-[#fff9df] mt-1"
+                style={{ fontFamily: "'Space Grotesk', Georgia, serif", letterSpacing: "-.04em" }}
+              >
+                {entry.tierLabel}
+              </h2>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -49,7 +74,10 @@ function UserCard({ entry }: { entry: ShackEntry }) {
 
       <div className="flex-1 text-center md:text-left space-y-1">
         <p className="text-[#ff1680] font-mono text-xs font-bold uppercase tracking-[.2em]">GITHUB SHACK</p>
-        <h1 className="text-2xl md:text-3xl font-bold text-[#fff9df]" style={{ fontFamily: "Georgia, serif" }}>
+        <h1
+          className="text-2xl md:text-3xl font-bold text-[#fff9df]"
+          style={{ fontFamily: "'Space Grotesk', Georgia, serif" }}
+        >
           @{entry.username}
         </h1>
         <p className="text-[#fff9df]/60 font-mono text-sm">{entry.tierLabel} · Tier {entry.tier}</p>
@@ -86,7 +114,12 @@ function Leaderboard({ entries }: { entries: ShackEntry[] }) {
       <div className="px-6 py-5 border-b border-[#fff9df]/10 flex items-center gap-3">
         <Trophy className="w-5 h-5 text-[#f8db19]" />
         <div>
-          <h2 className="text-[#fff9df] font-bold text-lg" style={{ fontFamily: "Georgia, serif" }}>Cracked Dev Leaderboard</h2>
+          <h2
+            className="text-[#fff9df] font-bold text-lg"
+            style={{ fontFamily: "'Space Grotesk', Georgia, serif" }}
+          >
+            Cracked Dev Leaderboard
+          </h2>
           <p className="text-[#fff9df]/40 font-mono text-xs mt-0.5">5 commits = 1 pint · ranked by commits</p>
         </div>
       </div>
@@ -109,8 +142,12 @@ function Leaderboard({ entries }: { entries: ShackEntry[] }) {
             </div>
 
             <div className="flex-1 min-w-0">
-              <a href={`https://github.com/${entry.username}`} target="_blank" rel="noopener noreferrer"
-                className="text-[#fff9df] font-mono font-bold text-sm hover:text-[#f8db19] transition-colors truncate block">
+              <a
+                href={`https://github.com/${entry.username}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#fff9df] font-mono font-bold text-sm hover:text-[#f8db19] transition-colors truncate block"
+              >
                 @{entry.username}
               </a>
               <span className="text-[#ff1680] font-mono text-xs">{entry.tierLabel}</span>
@@ -139,6 +176,7 @@ export default function ShackPage() {
   const [error, setError] = useState<string | null>(null);
   const [entry, setEntry] = useState<ShackEntry | null>(null);
   const [leaderboard, setLeaderboard] = useState<ShackEntry[]>([]);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
     fetch("/api/github-shack/leaderboard")
@@ -169,17 +207,7 @@ export default function ShackPage() {
   };
 
   return (
-    <div className="goa-page relative min-h-screen text-[#fff9df] pb-24 selection:bg-[#f8db19]/30 font-mono">
-      {/* dot grid overlay (same as homepage) */}
-      <div
-        className="pointer-events-none fixed inset-0"
-        style={{
-          backgroundImage: "radial-gradient(#f8db19 1px, transparent 1px)",
-          backgroundSize: "18px 18px",
-          opacity: 0.08,
-          maskImage: "linear-gradient(90deg, transparent, black 30%, black 70%, transparent)",
-        }}
-      />
+    <div className="relative min-h-screen text-[#fff9df] pb-24 selection:bg-[#f8db19]/30" style={{ background: "radial-gradient(circle at 70% 35%, #128052 0, #075b39 46%, #043c27 100%)" }}>
 
       {/* Header */}
       <header className="relative z-10 border-b border-[#fff9df]/10 bg-[#043c27]/60 backdrop-blur-md">
@@ -195,13 +223,24 @@ export default function ShackPage() {
       <main className="relative z-10 container mx-auto px-4 pt-14 md:pt-20 max-w-4xl">
         {/* Hero */}
         <div className="text-center mb-14">
-          <p className="text-[#ff1680] font-mono text-xs font-bold uppercase tracking-[.25em] mb-4">HACKER HOUSE GOA · 28–31 OCT 2026</p>
-          <h1 className="text-5xl md:text-7xl font-bold text-[#fff9df] mb-5" style={{ fontFamily: "Georgia, serif", letterSpacing: "-.05em" }}>
-            How stacked<br /><em className="text-[#f8db19] not-italic">is your shack?</em>
+          <p className="text-[#ff1680] font-mono text-xs font-bold uppercase tracking-[.25em] mb-4">
+            HACKER HOUSE GOA · 28–31 OCT 2026
+          </p>
+          <h1
+            className="text-5xl md:text-7xl font-black text-[#fff9df] mb-5"
+            style={{ fontFamily: "'Space Grotesk', Georgia, serif", letterSpacing: "-.05em" }}
+          >
+            How stacked<br />
+            <em className="text-[#f8db19] not-italic">is your shack?</em>
           </h1>
           <p className="text-[#fff9df]/60 font-mono text-sm max-w-sm mx-auto leading-relaxed">
             Type your GitHub username. Every 5 commits earns you a pint. See where you rank on the leaderboard.
           </p>
+        </div>
+
+        {/* Base shack image always visible */}
+        <div className="mb-10">
+          <ShackVisual entry={entry} />
         </div>
 
         {/* Input */}
@@ -239,7 +278,6 @@ export default function ShackPage() {
         {entry && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-20 animate-in fade-in slide-in-from-bottom-6 duration-500 items-start">
             <div className="lg:col-span-2 space-y-6">
-              <ShackVisual entry={entry} />
               <UserCard entry={entry} />
             </div>
             <div className="flex justify-center w-full">

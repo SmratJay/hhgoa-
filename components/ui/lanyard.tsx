@@ -15,8 +15,8 @@ import {
 import {MeshLineGeometry, MeshLineMaterial} from 'meshline';
 import * as THREE from 'three';
 import clsx from 'clsx';
+import { type StickerPlacement } from '@/components/card-template';
 
-// replace with your own imports, see the usage snippet for details
 import lanyard from './hhg-lanyard.svg';
 
 const cardGLB = '/card.glb';
@@ -30,6 +30,7 @@ interface LanyardProps {
     transparent?: boolean;
     containerClassName?: string;
     cardTextureUrl?: string;
+    stickers?: StickerPlacement[];
     canvasRef?: React.RefObject<HTMLCanvasElement | null>;
 }
 
@@ -40,6 +41,7 @@ export default function Lanyard({
                                     transparent = true,
                                     containerClassName,
                                     cardTextureUrl,
+                                    stickers = [],
                                     canvasRef
                                 }: LanyardProps) {
     const [isMobile, setIsMobile] = useState<boolean>(() => typeof window !== 'undefined' && window.innerWidth < 768);
@@ -62,7 +64,7 @@ export default function Lanyard({
             >
                 <ambientLight intensity={Math.PI}/>
                 <Physics gravity={gravity} timeStep={isMobile ? 1 / 30 : 1 / 60}>
-                    <Band isMobile={isMobile} cardTextureUrl={cardTextureUrl}/>
+                    <Band isMobile={isMobile} cardTextureUrl={cardTextureUrl} stickers={stickers}/>
                 </Physics>
                 <Environment blur={0.75}>
                     <Lightformer
@@ -104,9 +106,10 @@ interface BandProps {
     minSpeed?: number;
     isMobile?: boolean;
     cardTextureUrl?: string;
+    stickers?: StickerPlacement[];
 }
 
-function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: BandProps) {
+function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl, stickers = []}: BandProps) {
     const band = useRef<any>(null);
     const fixed = useRef<any>(null);
     const j1 = useRef<any>(null);
@@ -128,6 +131,10 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
 
     const {nodes, materials} = useGLTF(cardGLB) as any;
     const texture = useTexture(typeof lanyard === 'string' ? lanyard : lanyard.src) as THREE.Texture;
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.anisotropy = 16;
 
     const [customCardTexture, setCustomCardTexture] = useState<THREE.Texture | null>(null);
     useEffect(() => {
@@ -136,26 +143,21 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
         loader.load(cardTextureUrl, (t) => {
             t.flipY = false;
             t.colorSpace = THREE.SRGBColorSpace;
+            t.generateMipmaps = true;
+            t.minFilter = THREE.LinearMipmapLinearFilter;
+            t.magFilter = THREE.LinearFilter;
+            t.anisotropy = 16;
+            t.needsUpdate = true;
             setCustomCardTexture(t);
         });
         return () => { customCardTexture?.dispose(); };
     }, [cardTextureUrl]);
 
     // ── Flip state ─────────────────────────────────────────────────────────
-    // We mirror the boolean in a ref so useFrame (a stale closure) always
-    // reads the current value without triggering re-renders.
     const isFlippedRef = useRef(false);
-    const [isFlipped, setIsFlippedState] = useState(false);
-    const toggleFlip = () => {
-        const next = !isFlippedRef.current;
-        isFlippedRef.current = next;
-        setIsFlippedState(next);
-    };
+    const [, setIsFlippedState] = useState(false);
 
     // ── Drag vs tap detection ──────────────────────────────────────────────
-    // We only activate physics-drag when the pointer moves > 4px from the
-    // initial down position. A quick tap (no movement) skips drag entirely
-    // so the card stays dynamic and the torque impulse can act on it.
     const pointerDownScreenXY = useRef<{ x: number; y: number } | null>(null);
     const isDragging = useRef(false);
     const pendingDragVec = useRef<THREE.Vector3 | null>(null);
@@ -236,7 +238,6 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
     });
 
     curve.curveType = 'chordal';
-    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
 
     return (
         <>
@@ -265,10 +266,8 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
                         onPointerOut={() => hover(false)}
                         onPointerDown={(e: any) => {
                             e.target.setPointerCapture(e.pointerId);
-                            // Record screen-space position for tap vs drag detection
                             pointerDownScreenXY.current = { x: e.clientX, y: e.clientY };
                             isDragging.current = false;
-                            // Pre-calculate the drag offset but don't commit it yet
                             pendingDragVec.current = new THREE.Vector3()
                                 .copy(e.point)
                                 .sub(vec.copy(card.current.translation()));
@@ -278,7 +277,6 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
                             const dx = e.clientX - pointerDownScreenXY.current.x;
                             const dy = e.clientY - pointerDownScreenXY.current.y;
                             const dist = Math.sqrt(dx * dx + dy * dy);
-                            // Only activate drag once the pointer has moved > 4px
                             if (!isDragging.current && dist > 4 && pendingDragVec.current) {
                                 isDragging.current = true;
                                 drag(pendingDragVec.current);
@@ -287,14 +285,11 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
                         onPointerUp={(e: any) => {
                             e.target.releasePointerCapture(e.pointerId);
                             if (isDragging.current) {
-                                // End drag normally
                                 drag(false);
                             } else {
-                                // It was a tap — card is still dynamic, apply torque impulse
                                 const next = !isFlippedRef.current;
                                 isFlippedRef.current = next;
                                 setIsFlippedState(next);
-                                // Give it an immediate angular kick so it doesn't wait for useFrame
                                 if (card.current) {
                                     card.current.wakeUp();
                                     card.current.applyTorqueImpulse(
@@ -314,8 +309,8 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
                                 map-anisotropy={16}
                                 clearcoat={isMobile ? 0 : 1}
                                 clearcoatRoughness={0.15}
-                                roughness={0.9}
-                                metalness={0.8}
+                                roughness={0.35}
+                                metalness={0.1}
                             />
                         </mesh>
                         <mesh geometry={nodes.clip.geometry}>
@@ -324,6 +319,11 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
                         <mesh geometry={nodes.clamp.geometry}>
                             <meshPhysicalMaterial color="#aeb7c1" metalness={1} roughness={0.2} clearcoat={1} clearcoatRoughness={0.12} />
                         </mesh>
+
+                        {/* ── 3D Lifted Matte Sticker Planes ────────────────── */}
+                        {stickers.map((st) => (
+                            <Sticker3DMesh key={st.id} sticker={st} />
+                        ))}
                     </group>
                 </RigidBody>
             </group>
@@ -335,7 +335,7 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
                     resolution={isMobile ? [1000, 2000] : [1000, 1000]}
                     useMap
                     map={texture}
-                    repeat={[-4, 1]}
+                    repeat={[-1.2, 1]}
                     lineWidth={1}
                 />
             </mesh>
@@ -343,3 +343,42 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl}: B
     );
 }
 
+// ── 3D Matte Sticker Component ─────────────────────────────────────────────
+function Sticker3DMesh({ sticker }: { sticker: StickerPlacement }) {
+    const stTexture = useTexture(sticker.src) as THREE.Texture;
+    stTexture.colorSpace = THREE.SRGBColorSpace;
+    stTexture.minFilter = THREE.LinearFilter;
+    stTexture.magFilter = THREE.LinearFilter;
+
+    // Exact alignment with GLTF card mesh geometry bounds:
+    // X: -0.3582 to +0.3582 (width: 0.7164)
+    // Y: +0.0229 (bottom) to +1.0229 (top) (height: 1.0000)
+    const isFront = sticker.side === 'front';
+    const xFrac = sticker.x / 100;
+    const yFrac = sticker.y / 100;
+
+    const posX = (xFrac - 0.5) * 0.7164;
+    const posY = 1.0229 - (yFrac * 1.0000);
+    const posZ = isFront ? 0.007 : -0.001; // Lifted slightly off card surface
+
+    const scaleMult = (sticker.scale || 1.0) * 0.234;
+    const rotZ = ((sticker.rotation || 0) * Math.PI) / 180;
+    const rotY = isFront ? 0 : Math.PI;
+
+    return (
+        <group position={[posX, posY, 0]} rotation={[0, rotY, rotZ]}>
+            {/* 3D Lifted Matte Sticker Main Texture */}
+            <mesh position={[0, 0, posZ]}>
+                <planeGeometry args={[scaleMult, scaleMult]} />
+                <meshStandardMaterial
+                    map={stTexture}
+                    roughness={0.95} // Authentic matte texture finish!
+                    metalness={0.05}
+                    transparent={true}
+                    polygonOffset={true}
+                    polygonOffsetFactor={-1}
+                />
+            </mesh>
+        </group>
+    );
+}

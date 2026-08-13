@@ -9,8 +9,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import CardTemplate, { type CardTemplateRef, type CardVariant } from "@/components/card-template";
-import { Download, Link, Check, ImagePlus } from "lucide-react";
+import CardTemplate, {
+  type CardTemplateRef,
+  type CardVariant,
+  type StickerPlacement,
+  type PresetSticker,
+  AVAILABLE_STICKERS,
+} from "@/components/card-template";
+import { Download, Link, Check, ImagePlus, Sparkles, Trash2, Eye, RotateCw, GripHorizontal, RotateCcw } from "lucide-react";
 import { encryptLanyardData } from "@/lib/utils";
 
 // X (Twitter) icon component
@@ -43,6 +49,15 @@ function LinkedInIcon({ className }: { className?: string }) {
 
 const MAX_CHARACTERS = 20;
 
+const PRESET_POSITIONS = [
+  { x: 76, y: 22 }, // Top Right
+  { x: 22, y: 48 }, // Center Left
+  { x: 78, y: 48 }, // Center Right
+  { x: 24, y: 76 }, // Bottom Left
+  { x: 76, y: 76 }, // Bottom Right
+  { x: 22, y: 22 }, // Top Left
+];
+
 interface LanyardWithControlsProps {
   position?: [number, number, number];
   containerClassName?: string;
@@ -54,59 +69,67 @@ export default function LanyardWithControls({
   position = [0, 0, 20],
   containerClassName,
   defaultName = "",
-  defaultVariant = "dark",
 }: LanyardWithControlsProps) {
   const [inputValue, setInputValue] = useState(defaultName);
   const [appliedName, setAppliedName] = useState(defaultName);
-  const [cardVariant, setCardVariant] = useState<CardVariant>(defaultVariant);
-  const [appliedVariant, setAppliedVariant] = useState<CardVariant>(defaultVariant);
   const [cardTextureUrl, setCardTextureUrl] = useState<string | undefined>(undefined);
   const [photoUrl, setPhotoUrl] = useState<string | undefined>(undefined);
+  const [stickers, setStickers] = useState<StickerPlacement[]>([]);
+  const [frontPreviewUrl, setFrontPreviewUrl] = useState<string | null>(null);
+  const [backPreviewUrl, setBackPreviewUrl] = useState<string | null>(null);
+  const [previewTab, setPreviewTab] = useState<"front" | "back">("front");
+  const [stickerSide, setStickerSide] = useState<"front" | "back">("front");
   const [textureKey, setTextureKey] = useState(0);
   const [copied, setCopied] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+
+  // Dragging state for Movable Control Window
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  const isDraggingWindow = useRef(false);
+  const dragStartRef = useRef<{ startX: number; startY: number; posX: number; posY: number } | null>(null);
+
   const cardTemplateRef = useRef<CardTemplateRef>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
-  // Auto-capture texture when component mounts with a defaultName from URL
+  // Auto-capture texture on mount
   useEffect(() => {
-    // If no defaultName, mark as initialized immediately
-    if (!defaultName) {
-      setIsInitialized(true);
-      return;
-    }
-    
-    // If there's a defaultName, wait for card template to render then capture
     const timer = setTimeout(async () => {
       if (cardTemplateRef.current) {
         await cardTemplateRef.current.captureTexture();
       }
       setIsInitialized(true);
     }, 150);
-    
     return () => clearTimeout(timer);
   }, [defaultName]);
 
-  // Generate shareable URL with encrypted username and variant
   const getShareableUrl = useCallback(() => {
     const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
     if (appliedName) {
-      const encrypted = encryptLanyardData(appliedName, appliedVariant);
+      const encrypted = encryptLanyardData(appliedName, "dark");
       return `${baseUrl}/lanyard?u=${encrypted}`;
     }
     return `${baseUrl}/lanyard`;
-  }, [appliedName, appliedVariant]);
+  }, [appliedName]);
 
-  // Share message templates
   const shareMessage = appliedName
     ? `I made my Hacker House Goa 2026 ID card! 🌴 Build loud, ship often.`
     : `Make your Hacker House Goa 2026 ID card 🌴`;
 
   const handleShareX = useCallback(() => {
+    // Automatically export front and back ID card PNG images so the user can attach them to the tweet
+    cardTemplateRef.current?.exportCard("front");
+    setTimeout(() => {
+      cardTemplateRef.current?.exportCard("back");
+    }, 400);
+
     const url = getShareableUrl();
-    const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareMessage)}&url=${encodeURIComponent(url)}`;
+    const tweetText = appliedName
+      ? `Just created my official Hacker House Goa 2026 ID card for ${appliedName.toUpperCase()}! 🏖️⚡️ Building from the sand @247pmstudio. Check out your card or github shack at hhgoa.com! #HHGOA2026 #HackerHouseGoa`
+      : `Just created my official Hacker House Goa 2026 ID card! 🏖️⚡️ Building from the sand @247pmstudio. Check out your card or github shack at hhgoa.com! #HHGOA2026 #HackerHouseGoa`;
+
+    const twitterUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(tweetText)}&url=${encodeURIComponent(url)}`;
     window.open(twitterUrl, "_blank", "noopener,noreferrer");
-  }, [getShareableUrl, shareMessage]);
+  }, [appliedName, getShareableUrl]);
 
   const handleShareLinkedIn = useCallback(() => {
     const url = getShareableUrl();
@@ -125,25 +148,27 @@ export default function LanyardWithControls({
     }
   }, [getShareableUrl]);
 
-
   const characterCount = inputValue.length;
   const isAtLimit = characterCount >= MAX_CHARACTERS;
   const isNearLimit = characterCount >= MAX_CHARACTERS - 5;
-  const hasChanges = inputValue !== appliedName || cardVariant !== appliedVariant;
+  const hasChanges = inputValue !== appliedName || !!photoUrl;
 
   const handleTextureReady = useCallback((dataUrl: string) => {
     setCardTextureUrl(dataUrl);
     setTextureKey((prev) => prev + 1);
   }, []);
 
-  const handleExport = () => {
-    cardTemplateRef.current?.exportCard();
+  const handlePreviewUpdate = useCallback((frontUrl: string, backUrl: string) => {
+    setFrontPreviewUrl(frontUrl);
+    setBackPreviewUrl(backUrl);
+  }, []);
+
+  const handleExport = (side: "front" | "back" = "front") => {
+    cardTemplateRef.current?.exportCard(side);
   };
 
   const handleApplyName = async () => {
     setAppliedName(inputValue);
-    setAppliedVariant(cardVariant);
-    // Capture the card template as a texture
     await cardTemplateRef.current?.captureTexture();
   };
 
@@ -159,6 +184,34 @@ export default function LanyardWithControls({
     reader.readAsDataURL(file);
   };
 
+  const handleAddSticker = (preset: PresetSticker) => {
+    const sideStickers = stickers.filter((s) => s.side === stickerSide);
+    const pos = PRESET_POSITIONS[sideStickers.length % PRESET_POSITIONS.length];
+    const newSticker: StickerPlacement = {
+      id: `st-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      stickerId: preset.id,
+      src: preset.src,
+      side: stickerSide,
+      x: pos.x,
+      y: pos.y,
+      scale: 1.0,
+      rotation: (sideStickers.length % 2 === 0 ? 1 : -1) * (8 + (sideStickers.length * 5) % 16),
+    };
+    setStickers((prev) => [...prev, newSticker]);
+  };
+
+  const handleRemoveSticker = (id: string) => {
+    setStickers((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleRotateSticker = (id: string) => {
+    setStickers((prev) =>
+      prev.map((s) =>
+        s.id === id ? { ...s, rotation: ((s.rotation || 0) + 25) % 360 } : s
+      )
+    );
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     if (value.length <= MAX_CHARACTERS) {
@@ -172,16 +225,65 @@ export default function LanyardWithControls({
     }
   };
 
-  // Show loading spinner while waiting for initialization
+  // ── Drag handlers for Smooth Window Movement ─────────────────────────────
+  const animFrameRef = useRef<number | null>(null);
+
+  const handleHeaderPointerDown = (e: React.PointerEvent) => {
+    // If user clicked on a button inside header (e.g. Reset Position), do NOT start drag!
+    if ((e.target as HTMLElement).closest("button")) return;
+
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {}
+    isDraggingWindow.current = true;
+    const currentX = dragPos?.x || 0;
+    const currentY = dragPos?.y || 0;
+    dragStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      posX: currentX,
+      posY: currentY,
+    };
+  };
+
+  const handleHeaderPointerMove = (e: React.PointerEvent) => {
+    if (!isDraggingWindow.current || !dragStartRef.current) return;
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    animFrameRef.current = requestAnimationFrame(() => {
+      if (!dragStartRef.current) return;
+      const dx = clientX - dragStartRef.current.startX;
+      const dy = clientY - dragStartRef.current.startY;
+      setDragPos({
+        x: dragStartRef.current.posX + dx,
+        y: dragStartRef.current.posY + dy,
+      });
+    });
+  };
+
+  const handleHeaderPointerUp = (e: React.PointerEvent) => {
+    if (isDraggingWindow.current) {
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {}
+      isDraggingWindow.current = false;
+      dragStartRef.current = null;
+    }
+  };
+
   if (!isInitialized) {
     return (
       <div className="flex flex-col">
         <CardTemplate
           ref={cardTemplateRef}
           userName={inputValue}
-          variant={cardVariant}
+          variant="dark"
           photoUrl={photoUrl}
+          stickers={stickers}
           onTextureReady={handleTextureReady}
+          onPreviewUpdate={handlePreviewUpdate}
         />
         <div className={containerClassName}>
           <div className="flex h-full items-center justify-center">
@@ -192,200 +294,374 @@ export default function LanyardWithControls({
     );
   }
 
+  const activeStickersForSide = stickers.filter((s) => s.side === previewTab);
+
   return (
     <div className="flex flex-col">
-      {/* Hidden card template for texture generation */}
+      {/* Hidden card template for rendering textures & live preview */}
       <CardTemplate
         ref={cardTemplateRef}
         userName={inputValue}
-        variant={cardVariant}
+        variant="dark"
         photoUrl={photoUrl}
+        stickers={stickers}
         onTextureReady={handleTextureReady}
-        city='GOA, INDIA'
-        date='28–31 OCT 2026'
+        onPreviewUpdate={handlePreviewUpdate}
       />
+
+      {/* 3D Hanging Lanyard */}
       <Lanyard
         key={textureKey}
         position={position}
         containerClassName={containerClassName}
         cardTextureUrl={cardTextureUrl}
+        stickers={stickers}
         canvasRef={canvasRef}
       />
-      <div className="relative z-10 px-6 pb-8 lg:absolute lg:bottom-8 lg:right-6 lg:w-auto lg:px-0">
-        <div className="mx-auto max-w-md rounded-2xl border-2 border-[#f8db19] bg-[#075b39]/95 p-4 shadow-[8px_8px_0_#ff1680] backdrop-blur lg:mx-0 lg:ml-auto">
-          <div className="mb-4 flex items-center justify-between">
-            <label className="font-mono text-xs font-bold uppercase tracking-[0.18em] text-[#fff9df]">
-              Make your ID card
-            </label>
-            <div className="flex items-center gap-3">
-              <label className="flex cursor-pointer items-center gap-1.5">
-                <input
-                  type="radio"
-                  name="cardVariant"
-                  value="dark"
-                  checked={cardVariant === "dark"}
-                  onChange={() => setCardVariant("dark")}
-                  className="sr-only"
-                />
-                <span
-                    className={`flex h-6 w-6 items-center justify-center rounded-full border-2 bg-black transition-all ${
-                    cardVariant === "dark"
-                      ? "border-primary ring-2 ring-primary/30"
-                      : "border-border"
-                  }`}
-                >
-                  {cardVariant === "dark" && (
-                    <span className="h-2 w-2 rounded-full bg-white" />
-                  )}
-                </span>
-              </label>
-              <label className="flex cursor-pointer items-center gap-1.5">
-                <input
-                  type="radio"
-                  name="cardVariant"
-                  value="light"
-                  checked={cardVariant === "light"}
-                  onChange={() => setCardVariant("light")}
-                  className="sr-only"
-                />
-                <span
-                    className={`flex h-6 w-6 items-center justify-center rounded-full border-2 bg-[#fff9df] transition-all ${
-                    cardVariant === "light"
-                      ? "border-primary ring-2 ring-primary/30"
-                      : "border-border"
-                  }`}
-                >
-                  {cardVariant === "light" && (
-                    <span className="h-2 w-2 rounded-full bg-black" />
-                  )}
-                </span>
-              </label>
-            </div>
-          </div>
-          <label className="mb-3 flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-[#fff9df]/60 px-3 py-2 font-mono text-xs uppercase tracking-wider text-[#fff9df] transition hover:border-[#f8db19] hover:text-[#f8db19]">
-            <ImagePlus className="h-4 w-4" />
-            {photoUrl ? "Replace photo" : "Upload photo"}
-            <input type="file" accept="image/*" onChange={handlePhotoChange} className="sr-only" />
-          </label>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <input
-                id="userName"
-                type="text"
-                value={inputValue}
-                onChange={handleInputChange}
-                onKeyDown={handleKeyDown}
-                placeholder="Enter your name"
-                maxLength={MAX_CHARACTERS}
-                className="h-10 w-full rounded-md border border-[#fff9df]/50 bg-[#06472d] px-3 py-2 pr-16 font-mono text-sm text-[#fff9df] placeholder:text-[#fff9df]/60 focus:outline-none focus:ring-2 focus:ring-[#f8db19]"
-              />
-              <span
-                className={`absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs transition-colors ${
-                  isAtLimit
-                    ? "text-destructive"
-                    : isNearLimit
-                      ? "text-amber-500"
-                      : "text-muted-foreground"
-                }`}
-              >
-                {characterCount}/{MAX_CHARACTERS}
-              </span>
-            </div>
-            <Button
-              onClick={handleApplyName}
-              disabled={!hasChanges}
-              size="default"
-              className="shrink-0 bg-[#f8db19] font-mono font-bold text-[#075b39] hover:bg-[#fff9df]"
-            >
-              Apply
-            </Button>
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    onClick={handleExport}
-                    variant="outline"
-                    size="icon"
-                    className="shrink-0 border-[#fff9df] text-[#fff9df] hover:bg-[#ff1680] hover:text-white"
-                  >
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Export as PNG</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-          {isAtLimit && (
-            <p className="mt-1.5 text-xs text-destructive">
-              Character limit reached
-            </p>
-          )}
+
+      {/* ── MOVABLE & EMBEDDED LIVE PREVIEW STUDIO WINDOW ───────────────── */}
+      <div
+        style={dragPos ? { transform: `translate3d(${dragPos.x}px, ${dragPos.y}px, 0px)` } : undefined}
+        className="relative z-30 mx-auto mt-4 w-full max-w-4xl px-4 pb-12 will-change-transform"
+      >
+        <div className="rounded-2xl border-2 border-[#f8db19] bg-[#075b39]/95 shadow-[10px_10px_0_#ff1680] backdrop-blur">
           
-          {/* Share buttons - only visible when a name has been applied */}
-          {appliedName && (
-            <div className="mt-4 flex items-center gap-2">
-                <span className="font-mono text-xs font-bold uppercase tracking-wider text-[#fff9df]">
-                Share:
+          {/* ── Drag Header Bar ───────────────────────────────────────────── */}
+          <div
+            onPointerDown={handleHeaderPointerDown}
+            onPointerMove={handleHeaderPointerMove}
+            onPointerUp={handleHeaderPointerUp}
+            className="flex cursor-grab items-center justify-between border-b border-[#fff9df]/20 bg-[#04452a] px-4 py-2.5 select-none active:cursor-grabbing rounded-t-2xl touch-none"
+          >
+            <div className="flex items-center gap-2">
+              <GripHorizontal className="h-4 w-4 text-[#f8db19]" />
+              <span className="font-mono text-xs font-bold uppercase tracking-wider text-[#f8db19]">
+                ID Card Studio & Live Preview
               </span>
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      onClick={handleShareX}
-                      variant="outline"
-                      size="icon"
-                      className="shrink-0 dark:bg-background"
-                    >
-                      <XIcon className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Share on X</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      onClick={handleShareLinkedIn}
-                      variant="outline"
-                      size="icon"
-                      className="shrink-0 dark:bg-background"
-                    >
-                      <LinkedInIcon className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Share on LinkedIn</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      onClick={handleCopyLink}
-                      variant="outline"
-                      size="icon"
-                      className="shrink-0 dark:bg-background"
-                    >
-                      {copied ? (
-                        <Check className="h-4 w-4 text-green-500" />
-                      ) : (
-                        <Link className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{copied ? "Copied!" : "Copy link"}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
             </div>
-          )}
+            <div className="flex items-center gap-2">
+              {dragPos && (
+                <button
+                  type="button"
+                  onClick={() => setDragPos(null)}
+                  className="flex items-center gap-1 rounded bg-[#022e1b] px-2 py-0.5 font-mono text-[10px] font-bold text-[#fff9df]/80 transition hover:text-white"
+                >
+                  <RotateCcw className="h-3 w-3 text-[#f8db19]" /> Reset Position
+                </button>
+              )}
+              <span className="hidden font-mono text-[10px] text-[#fff9df]/50 sm:inline">
+                Drag bar to move window
+              </span>
+            </div>
+          </div>
+
+          {/* ── Main Studio Window Body ───────────────────────────────────── */}
+          <div className="flex flex-col gap-6 p-4 md:flex-row md:items-start md:p-6">
+            
+            {/* ── EMBEDDED EXPANDED LIVE PREVIEW WINDOW ─────────────────── */}
+            <div className="flex flex-col items-center rounded-xl border border-[#fff9df]/30 bg-[#04452a] p-4 md:w-80 shrink-0">
+              <div className="mb-3 flex w-full items-center justify-between gap-2 border-b border-[#fff9df]/20 pb-2">
+                <span className="flex items-center gap-1.5 font-mono text-xs font-bold uppercase tracking-wider text-[#f8db19]">
+                  <Eye className="h-4 w-4" />
+                  Live Preview
+                </span>
+                {/* Front / Back Perspective Tabs */}
+                <div className="flex rounded-md bg-[#022e1b] p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewTab("front")}
+                    className={`rounded px-2.5 py-1 font-mono text-xs font-bold uppercase transition ${
+                      previewTab === "front"
+                        ? "bg-[#f8db19] text-[#04452a]"
+                        : "text-[#fff9df]/60 hover:text-[#fff9df]"
+                    }`}
+                  >
+                    Front
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewTab("back")}
+                    className={`rounded px-2.5 py-1 font-mono text-xs font-bold uppercase transition ${
+                      previewTab === "back"
+                        ? "bg-[#f8db19] text-[#04452a]"
+                        : "text-[#fff9df]/60 hover:text-[#fff9df]"
+                    }`}
+                  >
+                    Back
+                  </button>
+                </div>
+              </div>
+
+              {/* Expanded Card Preview Box */}
+              <div className="relative aspect-square w-60 overflow-hidden rounded-xl border-2 border-[#f8db19]/60 bg-[#078C4A] shadow-xl sm:w-64">
+                {previewTab === "front" ? (
+                  frontPreviewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={frontPreviewUrl}
+                      alt="ID Card Front Preview"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center font-mono text-xs text-[#fff9df]">
+                      Rendering...
+                    </div>
+                  )
+                ) : backPreviewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={backPreviewUrl}
+                    alt="ID Card Back Preview"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center font-mono text-xs text-[#fff9df]">
+                    Rendering...
+                  </div>
+                )}
+              </div>
+
+              <p className="mt-2 text-center font-mono text-[10px] text-[#fff9df]/70">
+                {previewTab === "front" ? "Front: Photo, Name & Stickers" : "Back: QR Code & Custom Stickers"}
+              </p>
+
+              {/* Share to X (Twitter) Quick Action */}
+              <Button
+                type="button"
+                onClick={handleShareX}
+                size="sm"
+                className="mt-1 w-full gap-2 bg-[#f8db19] font-mono text-xs font-bold uppercase tracking-wider text-[#04452a] shadow-[4px_4px_0_#ff1680] transition hover:-translate-y-0.5 hover:bg-[#fff9df] hover:shadow-[6px_6px_0_#ff1680]"
+              >
+                <XIcon className="h-4 w-4" /> Share ID Card on X
+              </Button>
+            </div>
+
+            {/* ── CONTROLS & STICKER CUSTOMIZER ──────────────────────────── */}
+            <div className="flex flex-1 flex-col gap-4">
+              <div>
+                <label className="font-mono text-sm font-bold uppercase tracking-[0.18em] text-[#fff9df]">
+                  Customize Your Card
+                </label>
+                <p className="mt-0.5 font-mono text-xs text-[#fff9df]/60">
+                  Tap 3D card to flip · Drag window header to relocate
+                </p>
+              </div>
+
+              {/* Photo Upload */}
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-[#fff9df]/60 bg-[#06472d] px-4 py-2.5 font-mono text-xs uppercase tracking-wider text-[#fff9df] transition hover:border-[#f8db19] hover:text-[#f8db19]">
+                <ImagePlus className="h-4 w-4" />
+                {photoUrl ? "Replace photo" : "Upload photo"}
+                <input type="file" accept="image/*" onChange={handlePhotoChange} className="sr-only" />
+              </label>
+
+              {/* Name Input + Apply */}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <input
+                    id="userName"
+                    type="text"
+                    value={inputValue}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Enter your name"
+                    maxLength={MAX_CHARACTERS}
+                    className="h-11 w-full rounded-lg border border-[#fff9df]/50 bg-[#06472d] px-4 py-2 pr-14 font-mono text-sm text-[#fff9df] placeholder:text-[#fff9df]/60 focus:outline-none focus:ring-2 focus:ring-[#f8db19]"
+                  />
+                  <span
+                    className={`absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs transition-colors ${
+                      isAtLimit
+                        ? "text-destructive"
+                        : isNearLimit
+                          ? "text-amber-400"
+                          : "text-[#fff9df]/50"
+                    }`}
+                  >
+                    {characterCount}/{MAX_CHARACTERS}
+                  </span>
+                </div>
+                <Button
+                  onClick={handleApplyName}
+                  disabled={!hasChanges}
+                  size="default"
+                  className="h-11 shrink-0 bg-[#f8db19] font-mono font-bold text-[#075b39] hover:bg-[#fff9df]"
+                >
+                  Apply
+                </Button>
+              </div>
+
+              {/* STICKERS SECTION */}
+              <div className="rounded-xl border border-[#fff9df]/20 bg-[#04452a] p-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 font-mono text-xs font-bold uppercase tracking-wider text-[#f8db19]">
+                    <Sparkles className="h-4 w-4 text-[#ff1680]" />
+                    Paste Stickers ({stickers.length})
+                  </span>
+
+                  {/* Side Switcher */}
+                  <div className="flex items-center gap-1 font-mono text-xs text-[#fff9df]/80">
+                    <span>Target:</span>
+                    <button
+                      type="button"
+                      onClick={() => { setStickerSide("front"); setPreviewTab("front"); }}
+                      className={`rounded px-2 py-0.5 font-bold uppercase transition ${
+                        stickerSide === "front" ? "bg-[#ff1680] text-white" : "bg-[#022e1b] text-[#fff9df]/60"
+                      }`}
+                    >
+                      Front
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setStickerSide("back"); setPreviewTab("back"); }}
+                      className={`rounded px-2 py-0.5 font-bold uppercase transition ${
+                        stickerSide === "back" ? "bg-[#ff1680] text-white" : "bg-[#022e1b] text-[#fff9df]/60"
+                      }`}
+                    >
+                      Back
+                    </button>
+                  </div>
+                </div>
+
+                {/* Sticker Badges Grid */}
+                <div className="mt-3 flex flex-wrap gap-2 max-h-[150px] overflow-y-auto pr-1">
+                  {AVAILABLE_STICKERS.map((st) => (
+                    <button
+                      key={st.id}
+                      type="button"
+                      onClick={() => {
+                        handleAddSticker(st);
+                        setPreviewTab(stickerSide);
+                      }}
+                      className="flex flex-col items-center gap-1 rounded-lg border border-[#fff9df]/30 bg-[#065335] p-2 text-center transition hover:scale-105 hover:border-[#f8db19] hover:bg-[#086a44]"
+                      title={`Paste ${st.name} sticker onto ${stickerSide}`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={st.src} alt={st.name} className="h-8 w-8 object-contain" />
+                      <span className="line-clamp-1 font-mono text-[9px] font-bold text-[#fff9df]">
+                        +Add
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Active Stickers List */}
+                {activeStickersForSide.length > 0 && (
+                  <div className="mt-3.5 border-t border-[#fff9df]/15 pt-2.5">
+                    <span className="font-mono text-xs font-bold text-[#fff9df]/70 uppercase">
+                      Active {previewTab} Stickers:
+                    </span>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {activeStickersForSide.map((st, index) => (
+                        <div
+                          key={st.id}
+                          className="flex items-center gap-1.5 rounded-md border border-[#f8db19]/50 bg-[#022e1b] px-2.5 py-1 font-mono text-xs text-[#fff9df]"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={st.src} alt="sticker" className="h-5 w-5 object-contain" />
+                          <span>Sticker #{index + 1}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRotateSticker(st.id)}
+                            className="ml-1 text-[#f8db19] hover:text-white"
+                            title="Rotate Sticker"
+                          >
+                            <RotateCw className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSticker(st.id)}
+                            className="text-[#ff1680] hover:text-red-400"
+                            title="Remove Sticker"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Export & Sharing Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#fff9df]/20 pt-3">
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => handleExport("front")}
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 border-[#fff9df] font-mono text-xs text-[#fff9df] hover:bg-[#ff1680] hover:text-white"
+                  >
+                    <Download className="h-3.5 w-3.5" /> Export Front
+                  </Button>
+                  <Button
+                    onClick={() => handleExport("back")}
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 border-[#fff9df] font-mono text-xs text-[#fff9df] hover:bg-[#ff1680] hover:text-white"
+                  >
+                    <Download className="h-3.5 w-3.5" /> Export Back
+                  </Button>
+                </div>
+
+                {/* Social Share Buttons */}
+                {appliedName && (
+                  <div className="flex items-center gap-2">
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            onClick={handleShareX}
+                            variant="outline"
+                            size="icon"
+                            className="h-9 w-9 border-[#fff9df] text-[#fff9df] hover:bg-[#f8db19] hover:text-[#04452a]"
+                          >
+                            <XIcon className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent><p>Share on X</p></TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            onClick={handleShareLinkedIn}
+                            variant="outline"
+                            size="icon"
+                            className="h-9 w-9 border-[#fff9df] text-[#fff9df] hover:bg-[#f8db19] hover:text-[#04452a]"
+                          >
+                            <LinkedInIcon className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent><p>Share on LinkedIn</p></TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            onClick={handleCopyLink}
+                            variant="outline"
+                            size="icon"
+                            className="h-9 w-9 border-[#fff9df] text-[#fff9df] hover:bg-[#f8db19] hover:text-[#04452a]"
+                          >
+                            {copied ? (
+                              <Check className="h-4 w-4 text-green-400" />
+                            ) : (
+                              <Link className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent><p>{copied ? "Copied!" : "Copy link"}</p></TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -171,9 +171,10 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl, st
     const [dragged, drag] = useState<false | THREE.Vector3>(false);
     const [hovered, hover] = useState(false);
 
-    useRopeJoint(fixed, j1, [[0, 0, 0], [0, 0, 0], 1]);
-    useRopeJoint(j1, j2, [[0, 0, 0], [0, 0, 0], 1]);
-    useRopeJoint(j2, j3, [[0, 0, 0], [0, 0, 0], 1]);
+    const jointLen = isMobile ? 1.35 : 1;
+    useRopeJoint(fixed, j1, [[0, 0, 0], [0, 0, 0], jointLen]);
+    useRopeJoint(j1, j2, [[0, 0, 0], [0, 0, 0], jointLen]);
+    useRopeJoint(j2, j3, [[0, 0, 0], [0, 0, 0], jointLen]);
     useSphericalJoint(j3, card, [[0, 0, 0], [0, 1.45, 0]]);
 
     useEffect(() => {
@@ -241,7 +242,7 @@ function Band({maxSpeed = 50, minSpeed = 0, isMobile = false, cardTextureUrl, st
 
     return (
         <>
-            <group position={[0, 4, 0]}>
+            <group position={[0, 4.5, 0]}>
                 <RigidBody ref={fixed} {...segmentProps} type={'fixed' as RigidBodyProps['type']}/>
                 <RigidBody position={[0.5, 0, 0]} ref={j1} {...segmentProps} type={'dynamic' as RigidBodyProps['type']}>
                     <BallCollider args={[0.1]}/>

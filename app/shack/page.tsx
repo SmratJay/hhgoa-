@@ -101,6 +101,8 @@ function UserCard({ entry }: { entry: ShackEntry }) {
 
 /* ─── Leaderboard ────────────────────────────────────────────────── */
 function Leaderboard({ entries }: { entries: ShackEntry[] }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   if (entries.length === 0) {
     return (
       <div className="text-center py-12 bg-[#043c27]/50 border border-[#fff9df]/10 rounded-sm">
@@ -109,23 +111,30 @@ function Leaderboard({ entries }: { entries: ShackEntry[] }) {
     );
   }
 
+  const visibleEntries = isExpanded ? entries : entries.slice(0, 20);
+
   return (
     <div className="w-full bg-[#043c27]/50 border border-[#fff9df]/10 rounded-sm overflow-hidden">
-      <div className="px-6 py-5 border-b border-[#fff9df]/10 flex items-center gap-3">
-        <Trophy className="w-5 h-5 text-[#f8db19]" />
-        <div>
-          <h2
-            className="text-[#fff9df] font-bold text-lg"
-            style={{ fontFamily: "'Space Grotesk', Georgia, serif" }}
-          >
-            Cracked Dev Leaderboard
-          </h2>
-          <p className="text-[#fff9df]/40 font-mono text-xs mt-0.5">5 commits = 1 pint · ranked by commits</p>
+      <div className="px-6 py-5 border-b border-[#fff9df]/10 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Trophy className="w-5 h-5 text-[#f8db19]" />
+          <div>
+            <h2
+              className="text-[#fff9df] font-bold text-lg"
+              style={{ fontFamily: "'Space Grotesk', Georgia, serif" }}
+            >
+              Cracked Dev Leaderboard
+            </h2>
+            <p className="text-[#fff9df]/40 font-mono text-xs mt-0.5">5 commits = 1 pint · ranked by commits</p>
+          </div>
         </div>
+        <span className="font-mono text-xs text-[#f8db19] font-bold uppercase tracking-wider bg-[#075b39] px-3 py-1 rounded border border-[#f8db19]/30">
+          Showing {visibleEntries.length} of {entries.length}
+        </span>
       </div>
 
       <div className="divide-y divide-[#fff9df]/5">
-        {entries.map((entry, idx) => (
+        {visibleEntries.map((entry, idx) => (
           <div key={entry.username} className="flex items-center gap-4 px-5 py-4 hover:bg-[#075b39]/40 transition-colors">
             <span className={`font-mono font-bold text-lg w-8 text-right shrink-0 ${idx === 0 ? "text-[#f8db19]" : idx === 1 ? "text-[#fff9df]/60" : idx === 2 ? "text-amber-700" : "text-[#fff9df]/20"}`}>
               #{idx + 1}
@@ -165,6 +174,17 @@ function Leaderboard({ entries }: { entries: ShackEntry[] }) {
           </div>
         ))}
       </div>
+
+      {entries.length > 20 && (
+        <div className="p-4 border-t border-[#fff9df]/10 text-center bg-[#043c27]/60">
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="px-6 py-2.5 bg-[#f8db19] hover:bg-[#f8db19]/90 text-[#075b39] font-mono text-xs font-bold uppercase tracking-widest rounded-sm transition-all shadow-[4px_4px_0_#ff1680] hover:-translate-y-0.5"
+          >
+            {isExpanded ? "Show Top 20 Only" : `Expand Leaderboard (Show All ${entries.length} Hackers)`}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

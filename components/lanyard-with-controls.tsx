@@ -322,7 +322,7 @@ export default function LanyardWithControls({
       {/* ── MOVABLE & EMBEDDED LIVE PREVIEW STUDIO WINDOW ───────────────── */}
       <div
         style={dragPos ? { transform: `translate3d(${dragPos.x}px, ${dragPos.y}px, 0px)` } : undefined}
-        className="relative z-30 mx-auto mt-4 w-full max-w-4xl px-4 pb-12 will-change-transform"
+        className="relative z-30 mx-auto mt-16 sm:mt-24 lg:mt-28 w-full max-w-4xl px-4 pb-16 will-change-transform"
       >
         <div className="rounded-2xl border-2 border-[#f8db19] bg-[#075b39]/95 shadow-[10px_10px_0_#ff1680] backdrop-blur">
           

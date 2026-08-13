@@ -52,19 +52,30 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
   const attemptPlay = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    audio.play().then(() => {
-      setIsPlaying(true);
-    }).catch(() => {
-      setIsPlaying(false);
-      // If browser blocked autoplay, listen for first user interaction to start playing
-      const handleUserGesture = () => {
-        audio.play().then(() => setIsPlaying(true)).catch(() => {});
-        window.removeEventListener("pointerdown", handleUserGesture);
-        window.removeEventListener("keydown", handleUserGesture);
-      };
-      window.addEventListener("pointerdown", handleUserGesture, { once: true });
-      window.addEventListener("keydown", handleUserGesture, { once: true });
-    });
+
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise.then(() => {
+        setIsPlaying(true);
+      }).catch(() => {
+        setIsPlaying(false);
+        // Instant gesture handler on any mouse move, touch, click, scroll or key
+        const handleUserGesture = () => {
+          if (!audioRef.current) return;
+          audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+          window.removeEventListener("pointerdown", handleUserGesture);
+          window.removeEventListener("touchstart", handleUserGesture);
+          window.removeEventListener("mousemove", handleUserGesture);
+          window.removeEventListener("scroll", handleUserGesture);
+          window.removeEventListener("keydown", handleUserGesture);
+        };
+        window.addEventListener("pointerdown", handleUserGesture, { once: true });
+        window.addEventListener("touchstart", handleUserGesture, { once: true });
+        window.addEventListener("mousemove", handleUserGesture, { once: true });
+        window.addEventListener("scroll", handleUserGesture, { once: true });
+        window.addEventListener("keydown", handleUserGesture, { once: true });
+      });
+    }
   }, []);
 
   // Initialize audio element once

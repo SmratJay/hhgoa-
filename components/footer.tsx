@@ -44,9 +44,9 @@ const socialLinks = [
 
 export default function FooterSection() {
     return (
-        <footer className="border-t border-[#fff9df]/10 py-16 md:py-24 relative overflow-hidden">
+        <footer className="border-t border-[#fff9df]/20 py-16 md:py-24 relative overflow-hidden bg-[#043c27]/40 backdrop-blur-sm">
             {/* subtle dot grid */}
-            <div className="pointer-events-none absolute inset-0 opacity-[0.04]"
+            <div className="pointer-events-none absolute inset-0 opacity-[0.06]"
                 style={{
                     backgroundImage: 'radial-gradient(#f8db19 1px, transparent 1px)',
                     backgroundSize: '20px 20px',
@@ -70,20 +70,20 @@ export default function FooterSection() {
                 {/* HHGOA 2026 badge */}
                 <div className="text-center mb-10">
                     <span
-                        className="inline-block text-[#f8db19] text-3xl md:text-4xl font-black tracking-tight"
-                        style={{ fontFamily: 'Georgia, "Times New Roman", serif', letterSpacing: '-0.04em' }}
+                        className="inline-block text-[#f8db19] text-3xl md:text-4xl font-black tracking-tight drop-shadow-[0_4px_16px_rgba(0,0,0,0.85)]"
+                        style={{ fontFamily: "'Space Grotesk', Georgia, serif", letterSpacing: '-0.04em' }}
                     >
                         HACKER HOUSE{' '}
                         <em className="not-italic text-[#ff1680]">GOA</em>
                         {' '}
-                        <span className="text-[#fff9df]/40 text-2xl md:text-3xl font-bold">2026</span>
+                        <span className="text-[#fff9df] text-2xl md:text-3xl font-bold drop-shadow-[0_2px_10px_rgba(0,0,0,0.9)]">2026</span>
                     </span>
-                    <p className="text-[#fff9df]/40 font-mono text-xs tracking-[0.25em] uppercase mt-2">
+                    <p className="text-[#fff9df] font-mono text-xs font-bold tracking-[0.25em] uppercase mt-2.5 drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
                         28–31 OCT · PANAJI, GOA
                     </p>
                 </div>
 
-                {/* Social links */}
+                {/* Social links with bold pop styling */}
                 <div className="flex flex-wrap justify-center gap-4 mb-10">
                     {socialLinks.map((link) => (
                         <a
@@ -91,7 +91,7 @@ export default function FooterSection() {
                             href={link.href}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center gap-2 px-4 py-2.5 rounded-sm border border-[#fff9df]/15 text-[#fff9df]/60 hover:text-[#f8db19] hover:border-[#f8db19]/40 font-mono text-xs uppercase tracking-widest transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(248,219,25,0.15)]"
+                            className="flex items-center gap-2 px-4.5 py-3 rounded-md bg-[#043c27] border-2 border-[#fff9df]/40 text-[#fff9df] hover:text-[#f8db19] hover:border-[#f8db19] font-mono text-xs font-bold uppercase tracking-widest transition-all duration-200 shadow-[4px_4px_0_#ff1680] hover:-translate-y-0.5 hover:shadow-[6px_6px_0_#ff1680]"
                         >
                             {link.icon}
                             {link.label}
@@ -100,17 +100,17 @@ export default function FooterSection() {
                 </div>
 
                 {/* Nav links */}
-                <div className="flex flex-wrap justify-center gap-6 text-xs font-mono mb-10">
-                    <Link href="/lanyard" className="text-[#fff9df]/40 hover:text-[#fff9df] transition-colors uppercase tracking-widest">
-                        Create ID Card
+                <div className="flex flex-wrap justify-center gap-8 text-xs font-mono font-bold mb-10">
+                    <Link href="/lanyard" className="text-[#fff9df] hover:text-[#f8db19] transition-colors uppercase tracking-widest drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+                        Create ID Card →
                     </Link>
-                    <Link href="/shack" className="text-[#fff9df]/40 hover:text-[#fff9df] transition-colors uppercase tracking-widest">
-                        GitHub Shack
+                    <Link href="/shack" className="text-[#fff9df] hover:text-[#f8db19] transition-colors uppercase tracking-widest drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+                        GitHub Shack →
                     </Link>
                 </div>
 
                 {/* Tagline */}
-                <p className="text-center text-[#fff9df]/25 font-mono text-[11px] tracking-[0.3em] uppercase">
+                <p className="text-center text-[#fff9df] font-mono text-xs font-bold tracking-[0.3em] uppercase drop-shadow-[0_2px_8px_rgba(0,0,0,0.95)] opacity-90">
                     BUILD LOUD · SHIP OFTEN · HACK FROM THE SAND
                 </p>
             </div>
